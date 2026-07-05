@@ -243,7 +243,7 @@
     <div class="flex justify-between items-start shrink-0">
       <div>
         <h1 class="text-3xl font-bold tracking-tight">Demi-Chess</h1>
-        <p class="text-sm opacity-70 mt-1">A simple chess variant</p>
+        <p class="text-sm opacity-70 mt-1">Half chess, half missing.</p>
       </div>
       <label class="cursor-pointer p-2 mt-1 opacity-70 hover:opacity-100 transition-opacity">
         <!-- Sun icon -->
@@ -328,7 +328,7 @@
         What is Demi-Chess?
       </div>
       <div class="collapse-content text-sm opacity-80 grid gap-2">
-        <p>Demi-Chess was invented in 1986 by Peter Krystufek as a simple chess variant.</p>
+        <p>Demi-Chess was invented in 1986 by Peter Krystufek as a simplified chess variant.</p>
         <p>• Half the board, half the pieces.</p>
         <p>• No Queens, unless pawns are promoted.</p>
         <p>• Check, checkmate, stalemate and en passant work normally.</p>
