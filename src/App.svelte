@@ -292,7 +292,7 @@
             checked={easyMode}
             onchange={handleEasyModeChange}
           />
-          Take it easy
+          Take it easy (lower difficulty)
         </label>
       {/if}
     </div>
