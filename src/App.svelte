@@ -6,10 +6,11 @@
 
   let dark = $state(false);
   let vsComputer = $state(true);
+  let easyMode = $state(false);
 
   function handleThemeChange(e) {
     dark = e.target.checked;
-    localStorage.setItem('theme', dark ? 'luxury' : 'caramellatte');
+    localStorage.setItem('theme', dark ? 'forest' : 'caramellatte');
   }
 
   function setVsComputer(value) {
@@ -19,11 +20,35 @@
     aiThinking = false;
   }
 
+  function handleEasyModeChange(e) {
+    easyMode = e.target.checked;
+    localStorage.setItem('easyMode', easyMode ? '1' : '0');
+  }
+
   // 'check' is not a terminal state — the game keeps going, only
   // 'checkmate', 'stalemate', and the draw statuses actually end it.
   function isGameActive(status) {
     return status === 'playing' || status === 'check';
   }
+
+  // Centered board-overlay text/color shown once the game has ended. On
+  // checkmate, `gameState.turn` is the side with no legal moves (the loser),
+  // so the winner is whoever just moved.
+  let gameOverMessage = $derived.by(() => {
+    switch (gameState.status) {
+      case 'checkmate':
+        return gameState.turn === COLORS.WHITE ? 'Black Wins' : 'White Wins';
+      case 'stalemate':
+        return 'Stalemate';
+      case 'draw-repetition':
+        return 'Draw · Repetition';
+      case 'draw-claimed':
+        return 'Draw · Claimed';
+      default:
+        return null;
+    }
+  });
+  let gameOverVariant = $derived(gameState.status === 'checkmate' ? 'error' : 'neutral');
 
   let worker = null;
 
@@ -56,10 +81,13 @@
     // preference, or the OS preference if the user hasn't chosen one yet).
     const storedTheme = localStorage.getItem('theme');
     const darkMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    dark = storedTheme ? storedTheme === 'luxury' : darkMediaQuery.matches;
+    dark = storedTheme ? storedTheme === 'forest' : darkMediaQuery.matches;
 
     const storedVsComputer = localStorage.getItem('vsComputer');
     if (storedVsComputer !== null) vsComputer = storedVsComputer === '1';
+
+    const storedEasyMode = localStorage.getItem('easyMode');
+    if (storedEasyMode !== null) easyMode = storedEasyMode === '1';
 
     // If the user hasn't made an explicit choice, keep following the OS setting live.
     const handleSystemThemeChange = (e) => {
@@ -144,7 +172,7 @@
     // If it's black's turn and the game is playing, tell the worker to search
     if (vsComputer && gameState.turn === COLORS.BLACK && isGameActive(gameState.status) && worker) {
       aiThinking = true;
-      worker.postMessage({ type: 'search', state: $state.snapshot(gameState) });
+      worker.postMessage({ type: 'search', state: $state.snapshot(gameState), easyMode });
     }
   });
 
@@ -215,7 +243,7 @@
     <div class="flex justify-between items-start shrink-0">
       <div>
         <h1 class="text-3xl font-bold tracking-tight">Demi-Chess</h1>
-        <p class="text-sm opacity-70 mt-1">A 4×8 chess variant</p>
+        <p class="text-sm opacity-70 mt-1">A simple chess variant</p>
       </div>
       <label class="cursor-pointer p-2 mt-1 opacity-70 hover:opacity-100 transition-opacity">
         <!-- Sun icon -->
@@ -225,32 +253,12 @@
         <input
           type="checkbox"
           class="theme-controller hidden"
-          value="luxury"
+          value="forest"
           checked={dark}
           onchange={handleThemeChange}
         />
         <span class="sr-only">Toggle dark mode</span>
       </label>
-    </div>
-
-    <!-- MODE TOGGLE -->
-    <div class="join w-full shrink-0">
-      <button
-        type="button"
-        class="btn join-item flex-1 {vsComputer ? 'btn-primary' : 'btn-ghost'}"
-        aria-pressed={vsComputer}
-        onclick={() => setVsComputer(true)}
-      >
-        1 Player
-      </button>
-      <button
-        type="button"
-        class="btn join-item flex-1 {!vsComputer ? 'btn-primary' : 'btn-ghost'}"
-        aria-pressed={!vsComputer}
-        onclick={() => setVsComputer(false)}
-      >
-        2 Player
-      </button>
     </div>
 
     <!-- STATUS -->
@@ -275,6 +283,17 @@
         <button type="button" class="btn btn-sm btn-outline w-fit" onclick={claimDraw}>
           Claim Draw (3-fold repetition)
         </button>
+      {/if}
+      {#if vsComputer}
+        <label class="flex items-center gap-2 cursor-pointer w-fit text-sm">
+          <input
+            type="checkbox"
+            class="checkbox checkbox-sm"
+            checked={easyMode}
+            onchange={handleEasyModeChange}
+          />
+          Take it easy
+        </label>
       {/if}
     </div>
 
@@ -317,7 +336,27 @@
       </div>
     </div>
 
-    <button class="btn btn-primary w-full mt-2" onclick={startNewGame}>
+    <!-- MODE TOGGLE -->
+    <div class="join w-full shrink-0">
+      <button
+        type="button"
+        class="btn join-item flex-1 {vsComputer ? 'btn-secondary' : 'btn-ghost'}"
+        aria-pressed={vsComputer}
+        onclick={() => setVsComputer(true)}
+      >
+        1 Player
+      </button>
+      <button
+        type="button"
+        class="btn join-item flex-1 {!vsComputer ? 'btn-secondary' : 'btn-ghost'}"
+        aria-pressed={!vsComputer}
+        onclick={() => setVsComputer(false)}
+      >
+        2 Player
+      </button>
+    </div>
+
+    <button class="btn btn-accent w-full mt-2" onclick={startNewGame}>
       New Game
     </button>
 
@@ -336,6 +375,8 @@
       hiddenSquares={hiddenSquares}
       animatingPieces={animatingPieces}
       dark={dark}
+      gameOverMessage={gameOverMessage}
+      gameOverVariant={gameOverVariant}
     />
   </div>
 </div>

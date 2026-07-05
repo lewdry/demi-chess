@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @plugin "daisyui" {
-  themes: caramellatte, luxury;
+  themes: caramellatte, forest;
 }
 
 /* Square everything off - no rounded corners anywhere in the UI. */
@@ -9,4 +9,9 @@
   --radius-selector: 0rem;
   --radius-field: 0rem;
   --radius-box: 0rem;
+}
+
+/* Disable double-tap-to-zoom on mobile browsers. */
+html {
+  touch-action: manipulation;
 }

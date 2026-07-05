@@ -9,7 +9,9 @@
     onSquareClick,
     hiddenSquares = new Set(),
     animatingPieces = [],
-    dark = false
+    dark = false,
+    gameOverMessage = null,
+    gameOverVariant = 'neutral'
   } = $props();
 
   // Helper to check if a square is a legal move destination
@@ -28,7 +30,7 @@
     Aspect ratio of total board is width/height = 4/8 = 1/2.
   -->
   <div 
-    class="grid grid-cols-4 grid-rows-8 border-4 border-base-200 shadow-xl overflow-hidden h-full max-w-full relative"
+    class="grid grid-cols-4 grid-rows-8 border-4 border-base-200 shadow-xl overflow-hidden h-full max-w-full relative transition-[filter] duration-300 {gameOverMessage ? 'grayscale' : ''}"
     style="aspect-ratio: 4/8;"
   >
     {#each boardState as piece, index}
@@ -83,5 +85,20 @@
         <Piece piece={ap.piece} />
       </div>
     {/each}
+
+    <!-- Game over overlay: dims the board and surfaces the terminal status
+         (checkmate/stalemate/draw) front and center. -->
+    {#if gameOverMessage}
+      <div class="absolute inset-0 z-40 bg-base-content/30 flex items-center justify-center pointer-events-none px-4">
+        <span
+          class="
+            badge badge-lg md:text-lg font-bold tracking-wide px-4 py-4 shadow-xl text-center whitespace-normal h-auto
+            {gameOverVariant === 'error' ? 'badge-error' : 'badge-neutral'}
+          "
+        >
+          {gameOverMessage}
+        </span>
+      </div>
+    {/if}
   </div>
 </div>

@@ -118,6 +118,11 @@ function evaluate(board) {
 const MAX_DEPTH = 4;
 const MATE_SCORE = 100000;
 
+// "Take it easy" mode: a much shallower search plus a chance to play a random
+// legal move outright, so the CPU blunders far more often.
+const EASY_MAX_DEPTH = 1;
+const EASY_RANDOM_MOVE_CHANCE = 0.4;
+
 function findKingSquare(board, color) {
   for (let i = 0; i < 32; i++) {
     if (board[i] && board[i].type === PIECES.KING && board[i].color === color) {
@@ -198,17 +203,22 @@ function minimax(state, depth, alpha, beta, maximizingPlayer) {
   }
 }
 
-function findBestMove(state) {
+function findBestMove(state, easyMode) {
   const legalMoves = getLegalMoves(state.board, state.turn, state.castlingRights[state.turn], state.enPassantTarget);
   if (legalMoves.length === 0) return null;
 
+  if (easyMode && Math.random() < EASY_RANDOM_MOVE_CHANCE) {
+    return legalMoves[Math.floor(Math.random() * legalMoves.length)];
+  }
+
+  const depth = easyMode ? EASY_MAX_DEPTH : MAX_DEPTH;
   let bestMove = null;
   const isWhite = state.turn === COLORS.WHITE;
   let bestValue = isWhite ? -Infinity : Infinity;
 
   for (const move of legalMoves) {
     const nextState = getNextState(state, move);
-    const moveValue = minimax(nextState, MAX_DEPTH - 1, -Infinity, Infinity, !isWhite);
+    const moveValue = minimax(nextState, depth - 1, -Infinity, Infinity, !isWhite);
 
     if (isWhite ? moveValue > bestValue : moveValue < bestValue) {
       bestValue = moveValue;
@@ -221,9 +231,9 @@ function findBestMove(state) {
 }
 
 self.onmessage = function(e) {
-  const { type, state } = e.data;
+  const { type, state, easyMode } = e.data;
   if (type === 'search') {
-    const bestMove = findBestMove(state);
+    const bestMove = findBestMove(state, easyMode);
     self.postMessage({ type: 'bestMove', move: bestMove });
   }
 };
