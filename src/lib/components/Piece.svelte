@@ -9,6 +9,6 @@
 
 {#if pieceFile}
   <div class="w-full h-full p-[10%] drop-shadow-sm flex items-center justify-center">
-    <img src="/pieces/{pieceFile}" alt="{piece.color} {piece.type}" class="w-full h-full object-contain pointer-events-none {className}" />
+    <img src="{import.meta.env.BASE_URL}pieces/{pieceFile}" alt="{piece.color} {piece.type}" class="w-full h-full object-contain pointer-events-none {className}" />
   </div>
 {/if}
