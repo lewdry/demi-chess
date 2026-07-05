@@ -331,7 +331,6 @@
         <p>Demi-Chess was invented in 1986 by Peter Krystufek as a simple chess variant.</p>
         <p>• Half the board, half the pieces.</p>
         <p>• No Queens, unless pawns are promoted.</p>
-        <p>• Castling: King moves two squares toward Rook, Rook jumps over King.</p>
         <p>• Check, checkmate, stalemate and en passant work normally.</p>
       </div>
     </div>

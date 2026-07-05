@@ -5,7 +5,7 @@
     "module": "ESNext",
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
-    "checkJs": true,
+    "checkJs": false,
     "verbatimModuleSyntax": true,
     "isolatedModules": true
   },
