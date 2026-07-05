@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createInitialBoard, printBoard, algebraicToIndex, COLORS, EMPTY } from './board';
 import { generatePseudoLegalMoves } from './moveGeneration';
-import { getLegalMoves, simulateMove, isSquareAttacked, applyMoveToState } from './game';
+import { getLegalMoves, simulateMove, isSquareAttacked, applyMoveToState, createInitialGameState } from './game';
 
 describe('Board Representation', () => {
   it('creates the initial board correctly', () => {
@@ -80,3 +80,43 @@ describe('Legality and Game State (Phase 2)', () => {
     expect(nextBoard[algebraicToIndex('c5')]).toBe(EMPTY);
   });
 });
+
+describe('Draw by repetition (Phase 3)', () => {
+  it('allows claiming a draw at threefold repetition and forces one at fivefold', () => {
+    let state = createInitialGameState();
+    const whiteKnightHome = algebraicToIndex('c1');
+    const blackKnightHome = algebraicToIndex('c8');
+
+    const moveFrom = (color, fromSquare) =>
+      getLegalMoves(state.board, color, state.castlingRights[color], state.enPassantTarget)
+        .find(m => m.from === fromSquare);
+    const moveBackTo = (color, fromSquare, toSquare) =>
+      getLegalMoves(state.board, color, state.castlingRights[color], state.enPassantTarget)
+        .find(m => m.from === fromSquare && m.to === toSquare);
+
+    let claimableAtCycle = null;
+    let drawAtCycle = null;
+
+    for (let cycle = 0; cycle < 4 && drawAtCycle === null; cycle++) {
+      const whiteOut = moveFrom(COLORS.WHITE, whiteKnightHome);
+      state = applyMoveToState(state, whiteOut);
+      const blackOut = moveFrom(COLORS.BLACK, blackKnightHome);
+      state = applyMoveToState(state, blackOut);
+      const whiteBack = moveBackTo(COLORS.WHITE, whiteOut.to, whiteKnightHome);
+      state = applyMoveToState(state, whiteBack);
+      const blackBack = moveBackTo(COLORS.BLACK, blackOut.to, blackKnightHome);
+      state = applyMoveToState(state, blackBack);
+
+      if (state.canClaimDraw && claimableAtCycle === null) claimableAtCycle = cycle;
+      if (state.status === 'draw-repetition') drawAtCycle = cycle;
+    }
+
+    // The starting position recurs every full knight-shuffle cycle: it's the
+    // 1st occurrence before any moves, so the 3rd occurrence lands after the
+    // 2nd cycle (index 1), and the 5th occurrence after the 4th cycle (index 3).
+    expect(claimableAtCycle).toBe(1);
+    expect(drawAtCycle).toBe(3);
+    expect(state.status).toBe('draw-repetition');
+  });
+});
+

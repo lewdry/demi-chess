@@ -1,7 +1,7 @@
 <script>
   import Board from './lib/components/Board.svelte';
-  import { createInitialBoard, COLORS, indexToAlgebraic, EMPTY, PIECE_SYMBOLS } from './lib/engine/board.js';
-  import { getLegalMoves, applyMoveToState } from './lib/engine/game.js';
+  import { COLORS, indexToAlgebraic, EMPTY, PIECE_SYMBOLS } from './lib/engine/board.js';
+  import { getLegalMoves, applyMoveToState, createInitialGameState } from './lib/engine/game.js';
   import { onMount } from 'svelte';
 
   let dark = $state(false);
@@ -20,7 +20,7 @@
   }
 
   // 'check' is not a terminal state — the game keeps going, only
-  // 'checkmate' and 'stalemate' actually end it.
+  // 'checkmate', 'stalemate', and the draw statuses actually end it.
   function isGameActive(status) {
     return status === 'playing' || status === 'check';
   }
@@ -76,15 +76,7 @@
   });
 
   // Initial State 
-  let gameState = $state({
-    board: createInitialBoard(),
-    turn: COLORS.WHITE,
-    castlingRights: { w: true, b: true },
-    enPassantTarget: null,
-    history: [],
-    status: 'playing',
-    legalMovesOfTurn: []
-  });
+  let gameState = $state(createInitialGameState());
 
   // Animates a move (and, for castling, the accompanying rook) sliding from its
   // origin to its destination, then commits the resulting game state.
@@ -205,22 +197,21 @@
     aiThinking = false;
     animatingPieces = [];
     hiddenSquares = new Set();
-    gameState = {
-      board: createInitialBoard(),
-      turn: COLORS.WHITE,
-      castlingRights: { w: true, b: true },
-      enPassantTarget: null,
-      history: [],
-      status: 'playing',
-      legalMovesOfTurn: []
-    };
+    gameState = createInitialGameState();
     selectedSquare = null;
+  }
+
+  // Lets the side to move claim a draw once the current position has
+  // occurred three times (fivefold repetition ends the game automatically).
+  function claimDraw() {
+    if (!gameState.canClaimDraw || !isGameActive(gameState.status) || isAnimating) return;
+    gameState = { ...gameState, status: 'draw-claimed', canClaimDraw: false };
   }
 </script>
 
-<div class="h-screen w-screen bg-base-100 text-base-content flex flex-col-reverse md:flex-row items-stretch justify-center p-4 md:p-8 gap-8 overflow-hidden">
+<div class="min-h-dvh w-full md:h-screen bg-base-100 text-base-content flex flex-col-reverse md:flex-row items-stretch justify-center p-4 md:p-8 gap-6 md:gap-8 md:overflow-hidden">
   <!-- Sidebar -->
-  <div class="w-full md:w-96 flex flex-col gap-6 shrink md:shrink-0 min-h-0 bg-base-200 p-6 rounded-none shadow-sm overflow-y-auto max-h-full">
+  <div class="w-full md:w-96 flex flex-col gap-6 shrink md:shrink-0 min-h-0 bg-base-200 p-6 rounded-none shadow-sm md:overflow-y-auto md:max-h-full">
     <div class="flex justify-between items-start shrink-0">
       <div>
         <h1 class="text-3xl font-bold tracking-tight">Demi-Chess</h1>
@@ -274,12 +265,21 @@
           <span class="badge badge-error">Checkmate</span>
         {:else if gameState.status === 'stalemate'}
           <span class="badge badge-neutral">Stalemate</span>
+        {:else if gameState.status === 'draw-repetition'}
+          <span class="badge badge-neutral">Draw · Repetition</span>
+        {:else if gameState.status === 'draw-claimed'}
+          <span class="badge badge-neutral">Draw · Claimed</span>
         {/if}
       </div>
+      {#if gameState.canClaimDraw && isGameActive(gameState.status)}
+        <button type="button" class="btn btn-sm btn-outline w-fit" onclick={claimDraw}>
+          Claim Draw (3-fold repetition)
+        </button>
+      {/if}
     </div>
 
     <!-- HISTORY -->
-    <div class="flex flex-col gap-2 flex-grow overflow-hidden shrink min-h-0">
+    <div class="flex flex-col gap-2 md:flex-grow overflow-hidden shrink min-h-0 max-h-56 md:max-h-none">
       <h2 class="text-xs font-bold tracking-widest opacity-50 uppercase">History</h2>
       <div class="bg-base-100 rounded-none p-3 flex-1 overflow-y-auto font-mono text-sm shadow-inner min-h-0">
         {#if gameState.history.length === 0}
@@ -327,7 +327,7 @@
   </div>
 
   <!-- Board Area -->
-  <div class="flex-1 flex items-center justify-center bg-base-300 rounded-none p-4 md:p-8 shadow-inner min-h-[60vh] h-full overflow-hidden">
+  <div class="w-full md:flex-1 flex items-center justify-center bg-base-300 rounded-none p-4 md:p-8 shadow-inner h-[80dvh] md:h-full overflow-hidden">
     <Board 
       boardState={gameState.board}
       selectedSquare={selectedSquare}

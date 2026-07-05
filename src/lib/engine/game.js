@@ -1,5 +1,40 @@
-import { COLORS, EMPTY, PIECES } from './board.js';
+import { COLORS, EMPTY, PIECES, createInitialBoard } from './board.js';
 import { generatePseudoLegalMoves } from './moveGeneration.js';
+
+/**
+ * Builds a string key that uniquely identifies a "position" for threefold/fivefold
+ * repetition purposes: piece placement, side to move, castling rights, and en
+ * passant availability all have to match for two positions to be considered the same.
+ */
+export function getPositionKey(board, turn, castlingRights, enPassantTarget) {
+  let boardKey = '';
+  for (let i = 0; i < 32; i++) {
+    const piece = board[i];
+    boardKey += piece ? piece.color + piece.type : '-';
+  }
+  const castleKey = `${castlingRights.w ? 1 : 0}${castlingRights.b ? 1 : 0}`;
+  return `${boardKey}|${turn}|${castleKey}|${enPassantTarget ?? '-'}`;
+}
+
+/**
+ * Creates a brand new game state (fresh board, White to move, no history).
+ */
+export function createInitialGameState() {
+  const board = createInitialBoard();
+  const castlingRights = { w: true, b: true };
+  const initialKey = getPositionKey(board, COLORS.WHITE, castlingRights, null);
+  return {
+    board,
+    turn: COLORS.WHITE,
+    castlingRights,
+    enPassantTarget: null,
+    history: [],
+    status: 'playing',
+    legalMovesOfTurn: [],
+    positionCounts: { [initialKey]: 1 },
+    canClaimDraw: false
+  };
+}
 
 /**
  * Checks if a specific square is attacked by any piece of the given attacker color.
@@ -189,6 +224,27 @@ export function applyMoveToState(state, move) {
   } else if (inCheck) {
     status = 'check';
   }
+
+  // Track how many times this exact position (pieces, side to move, castling
+  // rights, en passant availability) has occurred, for the repetition rule.
+  const positionKey = getPositionKey(nextBoard, nextColor, newCastlingRights, newEpTarget);
+  const newPositionCounts = { ...state.positionCounts };
+  const repetitionCount = (newPositionCounts[positionKey] || 0) + 1;
+  newPositionCounts[positionKey] = repetitionCount;
+
+  // Fivefold repetition is an automatic draw, regardless of whether either
+  // player would have wanted to claim it. Only applies if the game isn't
+  // already decided by checkmate/stalemate.
+  let canClaimDraw = false;
+  if (status === 'playing' || status === 'check') {
+    if (repetitionCount >= 5) {
+      status = 'draw-repetition';
+    } else if (repetitionCount >= 3) {
+      // Threefold repetition: the side to move may claim a draw, but the game
+      // continues until they do.
+      canClaimDraw = true;
+    }
+  }
   
   // Record history
   const historyEntry = {
@@ -206,6 +262,8 @@ export function applyMoveToState(state, move) {
     enPassantTarget: newEpTarget,
     history: [...state.history, historyEntry],
     status,
-    legalMovesOfTurn: nextLegalMoves
+    legalMovesOfTurn: nextLegalMoves,
+    positionCounts: newPositionCounts,
+    canClaimDraw
   };
 }
