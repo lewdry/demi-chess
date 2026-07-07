@@ -30,7 +30,10 @@ export function createInitialGameState() {
     enPassantTarget: null,
     history: [],
     status: 'playing',
-    legalMovesOfTurn: [],
+    // Computed eagerly (not lazily via a mount-time effect) so the first
+    // render always has legal-move data to show move indicators from,
+    // regardless of whether other startup effects run successfully.
+    legalMovesOfTurn: getLegalMoves(board, COLORS.WHITE, castlingRights[COLORS.WHITE], null),
     positionCounts: { [initialKey]: 1 },
     canClaimDraw: false
   };

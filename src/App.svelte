@@ -1,15 +1,22 @@
 <script>
   import Board from './lib/components/Board.svelte';
   import { COLORS, indexToAlgebraic, EMPTY, PIECE_SYMBOLS } from './lib/engine/board.js';
-  import { getLegalMoves, applyMoveToState, createInitialGameState } from './lib/engine/game.js';
+  import { applyMoveToState, createInitialGameState } from './lib/engine/game.js';
   import { onMount } from 'svelte';
+
+  const DIFFICULTY_LEVELS = ['easy', 'normal', 'hard'];
 
   let dark = $state(false);
   let vsComputer = $state(true);
-  let easyMode = $state(false);
+  let difficulty = $state('normal');
+
+  function applyTheme(isDark) {
+    document.documentElement.setAttribute('data-theme', isDark ? 'forest' : 'caramellatte');
+  }
 
   function handleThemeChange(e) {
     dark = e.target.checked;
+    applyTheme(dark);
     localStorage.setItem('theme', dark ? 'forest' : 'caramellatte');
   }
 
@@ -20,9 +27,10 @@
     aiThinking = false;
   }
 
-  function handleEasyModeChange(e) {
-    easyMode = e.target.checked;
-    localStorage.setItem('easyMode', easyMode ? '1' : '0');
+  function setDifficulty(value) {
+    if (!DIFFICULTY_LEVELS.includes(value) || difficulty === value) return;
+    difficulty = value;
+    localStorage.setItem('difficulty', value);
   }
 
   // 'check' is not a terminal state — the game keeps going, only
@@ -64,42 +72,68 @@
   let hiddenSquares = $state(new Set());
 
   onMount(() => {
-    worker = new Worker(new URL('./lib/workers/engine.worker.js', import.meta.url), { type: 'module' });
-    worker.onmessage = (e) => {
-      if (e.data.type === 'bestMove' && e.data.move) {
-        const requestedGameId = gameId;
-        const move = e.data.move;
-        setTimeout(() => {
-          if (gameId !== requestedGameId || !vsComputer) return;
-          aiThinking = false;
-          performMove(move, gameState);
-        }, AI_THINK_MS);
+    // Each block below is independent and wrapped separately: a failure in
+    // one (e.g. the worker failing to start, or storage access being blocked
+    // by browser privacy settings on a fresh profile) must not prevent the
+    // others from running, otherwise the theme, preferences, or AI opponent
+    // can silently fail to initialize until the page is reloaded.
+    try {
+      worker = new Worker(new URL('./lib/workers/engine.worker.js', import.meta.url), { type: 'module' });
+      worker.onmessage = (e) => {
+        if (e.data.type === 'bestMove' && e.data.move) {
+          const requestedGameId = gameId;
+          const move = e.data.move;
+          setTimeout(() => {
+            if (gameId !== requestedGameId || !vsComputer) return;
+            aiThinking = false;
+            performMove(move, gameState);
+          }, AI_THINK_MS);
+        }
+      };
+    } catch (e) {
+      console.error('Failed to start AI worker:', e);
+    }
+
+    let darkMediaQuery = null;
+    let handleSystemThemeChange = null;
+    try {
+      // Match whatever theme index.html already resolved pre-paint (stored
+      // preference, or the OS preference if the user hasn't chosen one yet).
+      const storedTheme = localStorage.getItem('theme');
+      darkMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      dark = storedTheme ? storedTheme === 'forest' : darkMediaQuery.matches;
+      applyTheme(dark);
+
+      const storedVsComputer = localStorage.getItem('vsComputer');
+      if (storedVsComputer !== null) vsComputer = storedVsComputer === '1';
+
+      const storedDifficulty = localStorage.getItem('difficulty');
+      if (storedDifficulty && DIFFICULTY_LEVELS.includes(storedDifficulty)) {
+        difficulty = storedDifficulty;
+      } else {
+        const storedEasyMode = localStorage.getItem('easyMode');
+        if (storedEasyMode !== null) {
+          difficulty = storedEasyMode === '1' ? 'easy' : 'hard';
+          localStorage.setItem('difficulty', difficulty);
+          localStorage.removeItem('easyMode');
+        }
       }
-    };
 
-    // Match whatever theme index.html already resolved pre-paint (stored
-    // preference, or the OS preference if the user hasn't chosen one yet).
-    const storedTheme = localStorage.getItem('theme');
-    const darkMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    dark = storedTheme ? storedTheme === 'forest' : darkMediaQuery.matches;
-
-    const storedVsComputer = localStorage.getItem('vsComputer');
-    if (storedVsComputer !== null) vsComputer = storedVsComputer === '1';
-
-    const storedEasyMode = localStorage.getItem('easyMode');
-    if (storedEasyMode !== null) easyMode = storedEasyMode === '1';
-
-    // If the user hasn't made an explicit choice, keep following the OS setting live.
-    const handleSystemThemeChange = (e) => {
-      if (!localStorage.getItem('theme')) {
-        dark = e.matches;
-      }
-    };
-    darkMediaQuery.addEventListener('change', handleSystemThemeChange);
+      // If the user hasn't made an explicit choice, keep following the OS setting live.
+      handleSystemThemeChange = (e) => {
+        if (!localStorage.getItem('theme')) {
+          dark = e.matches;
+          applyTheme(dark);
+        }
+      };
+      darkMediaQuery.addEventListener('change', handleSystemThemeChange);
+    } catch (e) {
+      console.error('Failed to read theme/preferences:', e);
+    }
 
     return () => {
       worker && worker.terminate();
-      darkMediaQuery.removeEventListener('change', handleSystemThemeChange);
+      darkMediaQuery && handleSystemThemeChange && darkMediaQuery.removeEventListener('change', handleSystemThemeChange);
     };
   });
 
@@ -155,24 +189,11 @@
     }, MOVE_ANIM_MS);
   }
 
-  // Derived state to avoid recalculating unnecessarily
-  $effect(() => {
-    if (isGameActive(gameState.status) && gameState.legalMovesOfTurn.length === 0 && gameState.history.length === 0) {
-      // Very first turn initial load
-      gameState.legalMovesOfTurn = getLegalMoves(
-        gameState.board, 
-        gameState.turn, 
-        gameState.castlingRights[gameState.turn], 
-        gameState.enPassantTarget
-      );
-    }
-  });
-
   $effect(() => {
     // If it's black's turn and the game is playing, tell the worker to search
     if (vsComputer && gameState.turn === COLORS.BLACK && isGameActive(gameState.status) && worker) {
       aiThinking = true;
-      worker.postMessage({ type: 'search', state: $state.snapshot(gameState), easyMode });
+      worker.postMessage({ type: 'search', state: $state.snapshot(gameState), difficulty });
     }
   });
 
@@ -237,22 +258,22 @@
   }
 </script>
 
-<div class="min-h-dvh w-full md:h-screen bg-base-100 text-base-content flex flex-col-reverse md:flex-row items-stretch justify-center p-4 md:p-8 gap-6 md:gap-8 md:overflow-hidden">
+<div class="min-h-dvh w-full md:h-screen bg-base-100 text-base-content flex flex-col-reverse md:flex-row items-stretch justify-center p-3 md:p-8 gap-4 md:gap-8 md:overflow-hidden">
   <!-- Sidebar -->
-  <div class="w-full md:w-96 flex flex-col gap-6 shrink md:shrink-0 min-h-0 bg-base-200 p-6 rounded-none shadow-sm md:overflow-y-auto md:max-h-full">
+  <div class="w-full md:w-96 flex flex-col gap-3 md:gap-5 shrink md:shrink-0 min-h-0 bg-base-200 p-3 md:p-5 rounded-none shadow-sm md:overflow-y-auto md:max-h-full">
     <div class="flex justify-between items-start shrink-0">
       <div>
         <h1 class="text-3xl font-bold tracking-tight">Demi-Chess</h1>
-        <p class="text-sm opacity-70 mt-1">Half chess, half missing.</p>
+        <p class="text-sm opacity-70 mt-0.5">Half chess, half missing.</p>
       </div>
-      <label class="cursor-pointer p-2 mt-1 opacity-70 hover:opacity-100 transition-opacity">
+      <label class="cursor-pointer p-1.5 opacity-70 hover:opacity-100 transition-opacity">
         <!-- Sun icon -->
         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 swap-off fill-current" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class:hidden={dark}><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
         <!-- Moon icon -->
         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 swap-on fill-current" viewBox="0 0 20 20" class:hidden={!dark}><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" /></svg>
         <input
           type="checkbox"
-          class="theme-controller hidden"
+          class="hidden"
           value="forest"
           checked={dark}
           onchange={handleThemeChange}
@@ -262,8 +283,8 @@
     </div>
 
     <!-- STATUS -->
-    <div class="flex flex-col gap-2">
-      <div class="flex items-center gap-3">
+    <div class="flex flex-col gap-1">
+      <div class="flex items-center gap-2">
         <span class="text-lg font-medium capitalize">{gameState.turn === 'w' ? "White's" : "Black's"} Turn</span>
         {#if aiThinking}
           <span class="badge badge-ghost animate-pulse">Thinking…</span>
@@ -285,24 +306,30 @@
         </button>
       {/if}
       {#if vsComputer}
-        <label class="flex items-center gap-2 cursor-pointer w-fit text-sm">
-          <input
-            type="checkbox"
-            class="checkbox checkbox-sm"
-            checked={easyMode}
-            onchange={handleEasyModeChange}
-          />
-          Take it easy (lower difficulty)
-        </label>
+        <div class="flex flex-col gap-1.5">
+          <span class="text-xs font-bold tracking-widest opacity-50 uppercase">Difficulty</span>
+          <div class="join w-full">
+            {#each DIFFICULTY_LEVELS as level}
+              <button
+                type="button"
+                class="btn btn-sm join-item flex-1 {difficulty === level ? 'btn-secondary' : 'btn-ghost'}"
+                aria-pressed={difficulty === level}
+                onclick={() => setDifficulty(level)}
+              >
+                {level.charAt(0).toUpperCase() + level.slice(1)}
+              </button>
+            {/each}
+          </div>
+        </div>
       {/if}
     </div>
 
     <!-- HISTORY -->
-    <div class="flex flex-col gap-2 md:flex-grow overflow-hidden shrink min-h-0 max-h-56 md:max-h-none">
+    <div class="flex flex-col gap-1 md:flex-grow overflow-hidden shrink min-h-0 max-h-56 md:max-h-none">
       <h2 class="text-xs font-bold tracking-widest opacity-50 uppercase">History</h2>
-      <div class="bg-base-100 rounded-none p-3 flex-1 overflow-y-auto font-mono text-sm shadow-inner min-h-0">
+      <div class="bg-base-100 rounded-none p-2.5 flex-1 overflow-y-auto font-mono text-sm shadow-inner min-h-0">
         {#if gameState.history.length === 0}
-          <div class="opacity-50 italic text-center py-4">No moves yet</div>
+          <div class="opacity-50 italic text-center py-2">No moves yet</div>
         {:else}
           <div class="flex flex-col gap-1">
             {#each Array(Math.ceil(gameState.history.length / 2)) as _, turnIndex}
@@ -324,10 +351,10 @@
     <!-- RULES -->
     <div class="collapse collapse-arrow bg-base-100 shadow-sm border border-base-300 shrink-0">
       <input type="checkbox" /> 
-      <div class="collapse-title font-medium text-sm">
+      <div class="collapse-title font-medium text-sm py-2 min-h-0">
         What is Demi-Chess?
       </div>
-      <div class="collapse-content text-sm opacity-80 grid gap-2">
+      <div class="collapse-content text-sm opacity-80 grid gap-1.5 pb-3">
         <p>Demi-Chess was invented in 1986 by Peter Krystufek as a simplified chess variant.</p>
         <p>• Half the board, half the pieces.</p>
         <p>• No Queens, unless pawns are promoted.</p>
@@ -355,7 +382,7 @@
       </button>
     </div>
 
-    <button class="btn btn-accent w-full mt-2" onclick={startNewGame}>
+    <button class="btn btn-accent w-full" onclick={startNewGame}>
       New Game
     </button>
 
@@ -365,7 +392,7 @@
   </div>
 
   <!-- Board Area -->
-  <div class="w-full md:flex-1 flex items-center justify-center bg-base-300 rounded-none p-4 md:p-8 shadow-inner h-[80dvh] md:h-full overflow-hidden">
+  <div class="w-full md:flex-1 flex items-center justify-center bg-base-300 rounded-none p-3 md:p-8 shadow-inner h-[78dvh] md:h-full overflow-hidden">
     <Board 
       boardState={gameState.board}
       selectedSquare={selectedSquare}

@@ -114,14 +114,15 @@ function evaluate(board) {
   return score;
 }
 
-// Depth is measured in plies (half-moves). A depth of 4 means the engine looks ahead 2 full turns.
-const MAX_DEPTH = 4;
 const MATE_SCORE = 100000;
 
-// "Take it easy" mode: a much shallower search plus a chance to play a random
-// legal move outright, so the CPU blunders far more often.
-const EASY_MAX_DEPTH = 1;
-const EASY_RANDOM_MOVE_CHANCE = 0.4;
+// Depth is measured in plies (half-moves). On this 4x8 board, depth 4 already
+// feels fairly sharp, so keep that as hard mode and soften the lower levels.
+const DIFFICULTY_SETTINGS = {
+  easy: { depth: 1, randomMoveChance: 0.15 },
+  normal: { depth: 2, randomMoveChance: 0 },
+  hard: { depth: 4, randomMoveChance: 0 }
+};
 
 function findKingSquare(board, color) {
   for (let i = 0; i < 32; i++) {
@@ -203,15 +204,17 @@ function minimax(state, depth, alpha, beta, maximizingPlayer) {
   }
 }
 
-function findBestMove(state, easyMode) {
+function findBestMove(state, difficulty = 'normal') {
   const legalMoves = getLegalMoves(state.board, state.turn, state.castlingRights[state.turn], state.enPassantTarget);
   if (legalMoves.length === 0) return null;
 
-  if (easyMode && Math.random() < EASY_RANDOM_MOVE_CHANCE) {
+  const settings = DIFFICULTY_SETTINGS[difficulty] || DIFFICULTY_SETTINGS.normal;
+
+  if (settings.randomMoveChance > 0 && Math.random() < settings.randomMoveChance) {
     return legalMoves[Math.floor(Math.random() * legalMoves.length)];
   }
 
-  const depth = easyMode ? EASY_MAX_DEPTH : MAX_DEPTH;
+  const depth = settings.depth;
   let bestMove = null;
   const isWhite = state.turn === COLORS.WHITE;
   let bestValue = isWhite ? -Infinity : Infinity;
@@ -231,9 +234,9 @@ function findBestMove(state, easyMode) {
 }
 
 self.onmessage = function(e) {
-  const { type, state, easyMode } = e.data;
+  const { type, state, difficulty } = e.data;
   if (type === 'search') {
-    const bestMove = findBestMove(state, easyMode);
+    const bestMove = findBestMove(state, difficulty);
     self.postMessage({ type: 'bestMove', move: bestMove });
   }
 };
